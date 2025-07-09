@@ -42,6 +42,17 @@ async function run() {
       }
     });
 
+    // create api for get all user
+    app.get('/users', async (req, res) => {
+      try {
+        const users = await usersCollection.find().toArray();
+        res.status(200).json(users);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).json({ message: 'Failed to get users', error });
+      }
+    });
+
     // update user last login
     app.patch('/users/last-login', async (req, res) => {
       const { email } = req.body;
@@ -70,18 +81,71 @@ async function run() {
       }
     });
 
+    // user make admin
+    app.patch("/users/make-admin", async (req, res) => {
+      const { email } = req.body;
+      const result = await usersCollection.updateOne(
+        { email },
+        { $set: { role: "admin" } }
+      );
+      res.send(result);
+    });
+
+    // users search
+    app.get('/users/search', async (req,res) => {
+      const query = req.query.query;
+
+      const searchRegex = new RegExp(query, 'i');
+
+      const users = await usersCollection.find({
+        $or: [
+          {
+            name: {$regex : searchRegex}
+          },
+          {  
+            email: {$regex: searchRegex}
+          }
+        ]
+      }).toArray();
+      res.status(200).send(users);
+    })
+
     // create post api for insert teacher
     app.post('/teacher', async (req, res) => {
       const teacher = req.body;
+
+      if (!teacher.email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
       try {
-        const result = await teachersCollection.insertOne(teacher);
-        res.status(201).json({
-          message: 'Teacher added successfully',
-          insertedId: result.insertedId
-        });
+        // Check if teacher already exists by email
+        const existingTeacher = await teachersCollection.findOne({ email: teacher.email });
+
+        if (existingTeacher) {
+          // Teacher exists, update status to "pending"
+          const updateResult = await teachersCollection.updateOne(
+            { email: teacher.email },
+            { $set: { status: 'pending' } }
+          );
+
+          return res.status(200).json({
+            message: 'Teacher already exists, status set to pending',
+            modifiedCount: updateResult.modifiedCount
+          });
+        } else {
+          // Teacher does not exist, insert new with status = pending
+
+          const insertResult = await teachersCollection.insertOne(teacher);
+
+          return res.status(201).json({
+            message: 'New teacher added successfully',
+            insertedId: insertResult.insertedId
+          });
+        }
       } catch (error) {
-        console.error("Error inserting teacher:", error);
-        res.status(500).json({ message: 'Failed to insert teacher', error });
+        console.error('Error handling teacher post:', error);
+        res.status(500).json({ message: 'Something went wrong', error });
       }
     });
 
@@ -104,6 +168,86 @@ async function run() {
       } catch (error) {
         console.error("Error fetching teacher:", error);
         res.status(500).json({ message: 'Failed to get teacher', error });
+      }
+    });
+
+    // create api for get all teacher
+    app.get('/teachers', async (req, res) => {
+      try {
+        const teachers = await teachersCollection.find().toArray();
+        res.status(200).json(teachers);
+      } catch (error) {
+        console.error("Error fetching teachers:", error);
+        res.status(500).json({ message: 'Failed to get teachers', error });
+      }
+    });
+
+
+    // create patch api for teacher accept
+    app.patch('/teachers/accept', async (req, res) => {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
+      try {
+        // 1. Update teacher's status
+        const teacherUpdate = await teachersCollection.updateOne(
+          { email: email },
+          { $set: { status: 'accepted' } }
+        );
+
+        // 2. Update user's role
+        const userUpdate = await usersCollection.updateOne(
+          { email: email },
+          { $set: { role: 'teacher' } }
+        );
+
+        if (teacherUpdate.matchedCount === 0) {
+          return res.status(404).json({ message: 'Teacher not found' });
+        }
+
+        res.status(200).json({
+          message: 'Teacher status updated to accepted and user role set to teacher'
+        });
+      } catch (error) {
+        console.error("Error updating teacher status and user role:", error);
+        res.status(500).json({ message: 'Failed to update status and role', error });
+      }
+    });
+
+    // create patch api for teacher rejected
+    app.patch('/teachers/reject', async (req, res) => {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
+      try {
+        // 1. Update teacher's status to "rejected"
+        const teacherUpdate = await teachersCollection.updateOne(
+          { email: email },
+          { $set: { status: 'rejected' } }
+        );
+
+        // 2. Update user's role to "user"
+        const userUpdate = await usersCollection.updateOne(
+          { email: email },
+          { $set: { role: 'user' } }
+        );
+
+        if (teacherUpdate.matchedCount === 0) {
+          return res.status(404).json({ message: 'Teacher not found' });
+        }
+
+        res.status(200).json({
+          message: 'Teacher status updated to rejected and user role set to user'
+        });
+      } catch (error) {
+        console.error("Error updating teacher status and user role:", error);
+        res.status(500).json({ message: 'Failed to reject teacher', error });
       }
     });
 
