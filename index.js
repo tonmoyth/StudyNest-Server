@@ -42,6 +42,28 @@ async function run() {
       }
     });
 
+    // update user profile
+    app.patch('/users/update', async (req, res) => {
+      const { email, phone } = req.body;
+      console.log(email, phone)
+
+      try {
+        const result = await usersCollection.updateOne(
+          { email: email },
+          { $set: { phone: phone } }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.status(200).json({ message: 'Phone number updated successfully' });
+      } catch (error) {
+        console.error("Error updating phone number:", error);
+        res.status(500).json({ message: 'Failed to update phone number', error });
+      }
+    });
+
     // create api for get all user
     app.get('/users', async (req, res) => {
       try {
@@ -92,7 +114,7 @@ async function run() {
     });
 
     // users search
-    app.get('/users/search', async (req,res) => {
+    app.get('/users/search', async (req, res) => {
       const query = req.query.query;
 
       const searchRegex = new RegExp(query, 'i');
@@ -100,15 +122,33 @@ async function run() {
       const users = await usersCollection.find({
         $or: [
           {
-            name: {$regex : searchRegex}
+            name: { $regex: searchRegex }
           },
-          {  
-            email: {$regex: searchRegex}
+          {
+            email: { $regex: searchRegex }
           }
         ]
       }).toArray();
       res.status(200).send(users);
     })
+
+    // user get for profile route show
+    app.get('/users/profile', async (req, res) => {
+      const email = req.query.email;
+
+      try {
+        const user = await usersCollection.findOne({ email: email });
+
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.status(200).json(user);
+      } catch (error) {
+        console.error("Error fetching user:", error);
+        res.status(500).json({ message: 'Failed to get user', error });
+      }
+    });
 
     // create post api for insert teacher
     app.post('/teacher', async (req, res) => {
@@ -152,6 +192,7 @@ async function run() {
     // create api for get teacher data
     app.get('/teacher', async (req, res) => {
       const email = req.query.email;
+      console.log(email);
 
       if (!email) {
         return res.status(400).json({ message: 'Email is required as query parameter' });
@@ -161,7 +202,7 @@ async function run() {
         const teacher = await teachersCollection.findOne({ email: email });
 
         if (!teacher) {
-          return res.status(404).json({ message: 'Teacher not found' });
+          return res.send(null);
         }
 
         res.status(200).json(teacher);
