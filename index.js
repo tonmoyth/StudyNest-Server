@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
 
 // Middleware
@@ -308,6 +308,47 @@ async function run() {
         console.error("Error inserting class:", error);
         res.status(500).json({ message: 'Failed to add class', error });
       }
+    });
+
+    // create api for get teacher classes
+    app.get('/classes', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Teacher email is required as query parameter' });
+      }
+
+      try {
+        const teacherClasses = await classesCollection.find({ email }).toArray();
+
+        res.status(200).json(teacherClasses);
+      } catch (error) {
+        console.error("Error fetching teacher classes:", error);
+        res.status(500).json({ message: 'Failed to get classes', error });
+      }
+    });
+
+    // create api for update class data
+    app.patch('/classes/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const updateDoc = {
+        $set: {
+          title: req.body.title,
+          price: req.body.price,
+          description: req.body.description,
+          // image: req.body.image,
+        },
+      };
+      const result = await classesCollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
+    // create api for delete teacher class
+    app.delete('/classes/:id', async (req, res) => {
+      const id = req.params.id;
+      const result = await classesCollection.deleteOne({ _id: new ObjectId(id) });
+      res.send(result);
     });
 
   } finally {
