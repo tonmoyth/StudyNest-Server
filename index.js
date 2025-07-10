@@ -310,6 +310,41 @@ async function run() {
       }
     });
 
+    // created api for all classes
+    app.get('/classes/all', async (req, res) => {
+      try {
+        const allClasses = await classesCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).json(allClasses);
+      } catch (error) {
+        console.error("Error fetching classes:", error);
+        res.status(500).json({ message: 'Failed to get classes', error });
+      }
+    });
+
+    // PATCH: Approve class
+    app.patch("/classes/approve/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await classesCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "approved" } }
+      );
+      res.send(result);
+    });
+
+    // PATCH: Reject class
+    app.patch("/classes/reject/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await classesCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "rejected" } }
+      );
+      res.send(result);
+    });
+
     // create api for get teacher classes
     app.get('/classes', async (req, res) => {
       const email = req.query.email;
