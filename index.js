@@ -3,6 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
+const Stripe = require('stripe');
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Middleware
 const app = express();
@@ -26,6 +28,26 @@ async function run() {
     const teachersCollection = database.collection("teachers");
     const classesCollection = database.collection("classes");
 
+    // POST /create-payment-intent
+    app.post('/create-payment-intent', async (req, res) => {
+      const { amountCent } = req.body;
+      console.log(amountCent)
+
+      try {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: Math.round(amountCent),
+          currency: 'usd',
+          payment_method_types: ['card'],
+        });
+
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      } catch (err) {
+        res.status(500).send({ error: err.message });
+      }
+    });
+
     // create api for user info insert 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -46,7 +68,6 @@ async function run() {
     // update user profile
     app.patch('/users/update', async (req, res) => {
       const { email, phone } = req.body;
-      console.log(email, phone)
 
       try {
         const result = await usersCollection.updateOne(
@@ -148,6 +169,39 @@ async function run() {
       } catch (error) {
         console.error("Error fetching user:", error);
         res.status(500).json({ message: 'Failed to get user', error });
+      }
+    });
+
+    // create api for get classes aprove
+    app.get('/classes/approved', async (req, res) => {
+      try {
+        const approvedClasses = await classesCollection
+          .find({ status: "approved" })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).json(approvedClasses);
+      } catch (error) {
+        console.error("Error fetching approved classes:", error);
+        res.status(500).json({ message: 'Failed to get approved classes', error });
+      }
+    });
+
+    // create api for get single class
+    app.get('/classes/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log(id)
+      try {
+        const classData = await classesCollection.findOne({ _id: new ObjectId(id) });
+
+        if (!classData) {
+          return res.status(404).json({ message: 'Class not found' });
+        }
+
+        res.status(200).json(classData);
+      } catch (error) {
+        console.error("Error fetching class by ID:", error);
+        res.status(500).json({ message: 'Failed to get class', error });
       }
     });
 
