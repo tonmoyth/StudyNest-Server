@@ -24,11 +24,12 @@ async function run() {
     const database = client.db("study-nest");
     const usersCollection = database.collection("users");
     const teachersCollection = database.collection("teachers");
+    const classesCollection = database.collection("classes");
 
     // create api for user info insert 
     app.post("/users", async (req, res) => {
       const user = req.body;
-      console.log(user)
+
 
       // if (!user.username || !user.email) {
       //   return res.status(400).json({ message: "Name and email required" });
@@ -289,6 +290,23 @@ async function run() {
       } catch (error) {
         console.error("Error updating teacher status and user role:", error);
         res.status(500).json({ message: 'Failed to reject teacher', error });
+      }
+    });
+
+    // create api for added teacher class
+    app.post('/classes', async (req, res) => {
+      const newClass = req.body;
+
+      try {
+        const result = await classesCollection.insertOne(newClass);
+
+        res.status(201).json({
+          message: 'Class added successfully',
+          insertedId: result.insertedId
+        });
+      } catch (error) {
+        console.error("Error inserting class:", error);
+        res.status(500).json({ message: 'Failed to add class', error });
       }
     });
 
