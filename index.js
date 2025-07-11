@@ -28,6 +28,7 @@ async function run() {
     const teachersCollection = database.collection("teachers");
     const classesCollection = database.collection("classes");
     const paymentsCollection = database.collection("payments");
+    const assignmentsCollection = database.collection("assignments");
 
     // POST /create-payment-intent
     app.post('/create-payment-intent', async (req, res) => {
@@ -90,6 +91,36 @@ async function run() {
       } catch (error) {
         console.error('Enrollment error:', error);
         res.status(500).json({ message: 'Enrollment failed', error });
+      }
+    });
+
+    // create api for get all enroll class
+    app.get('/enrolled-classes', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required as query parameter' });
+      }
+
+      try {
+        // 1. Get classIds from paymentsCollection where email matches
+        const payments = await paymentsCollection.find({ email }).toArray();
+
+        const classIds = payments.map(p => new ObjectId(p.classId));
+
+        if (classIds.length === 0) {
+          return res.status(200).json([]); // no enrollments yet
+        }
+
+        // 2. Get classes from classesCollection using those classIds
+        const enrolledClasses = await classesCollection
+          .find({ _id: { $in: classIds } })
+          .toArray();
+
+        res.status(200).json(enrolledClasses);
+      } catch (error) {
+        console.error("Error fetching enrolled classes:", error);
+        res.status(500).json({ message: 'Failed to fetch enrolled classes', error });
       }
     });
 
@@ -235,6 +266,10 @@ async function run() {
     // create api for get single class
     app.get('/classes/:id', async (req, res) => {
       const id = req.params.id;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ message: "Invalid ID format" });
+      }
       try {
         const classData = await classesCollection.findOne({ _id: new ObjectId(id) });
 
@@ -291,7 +326,6 @@ async function run() {
     // create api for get teacher data
     app.get('/teacher', async (req, res) => {
       const email = req.query.email;
-      console.log(email);
 
       if (!email) {
         return res.status(400).json({ message: 'Email is required as query parameter' });
@@ -311,13 +345,52 @@ async function run() {
       }
     });
 
+    // get enrollments
+    app.get('/classes_enrollments', async (req, res) => {
+      const email = req.query.email;
+
+      try {
+        // Step 1: Get all classes by teacher email
+        const classes = await classesCollection.find({ email }).toArray();
+
+        // Step 2: Calculate total enrollments
+        const totalEnrollments = classes.reduce((total, cls) => {
+          return total + (cls.enrollments || 0);
+        }, 0);
+
+        res.status(200).json({
+          totalEnrollments,
+          classCount: classes.length,
+        });
+      } catch (error) {
+        console.error('Error fetching enrollments:', error);
+        res.status(500).json({ message: 'Failed to fetch enrollments', error });
+      }
+    });
+
+    // get assignment count
+    app.get('/assignments/count', async (req, res) => {
+      const email = req.query.email;
+
+      try {
+        const count = await assignmentsCollection.countDocuments({teacherEmail: email });
+
+        res.status(200).json({
+          email,
+          assignmentCount: count
+        });
+      } catch (error) {
+        console.error("Error counting assignments:", error);
+        res.status(500).json({ message: 'Failed to count assignments', error });
+      }
+    });
+
     // create api for get all teacher
     app.get('/teachers', async (req, res) => {
       try {
         const teachers = await teachersCollection.find().toArray();
         res.status(200).json(teachers);
       } catch (error) {
-        console.error("Error fetching teachers:", error);
         res.status(500).json({ message: 'Failed to get teachers', error });
       }
     });
@@ -352,7 +425,7 @@ async function run() {
           message: 'Teacher status updated to accepted and user role set to teacher'
         });
       } catch (error) {
-        console.error("Error updating teacher status and user role:", error);
+
         res.status(500).json({ message: 'Failed to update status and role', error });
       }
     });
@@ -386,8 +459,24 @@ async function run() {
           message: 'Teacher status updated to rejected and user role set to user'
         });
       } catch (error) {
-        console.error("Error updating teacher status and user role:", error);
+
         res.status(500).json({ message: 'Failed to reject teacher', error });
+      }
+    });
+
+    // create post api for added assignment
+    app.post('/assignments', async (req, res) => {
+      const assignment = req.body;
+      try {
+        const result = await assignmentsCollection.insertOne(assignment);
+
+        res.status(201).json({
+          message: 'Assignment added successfully',
+          insertedId: result.insertedId
+        });
+      } catch (error) {
+        console.error("Error inserting assignment:", error);
+        res.status(500).json({ message: 'Failed to insert assignment', error });
       }
     });
 
@@ -403,22 +492,21 @@ async function run() {
           insertedId: result.insertedId
         });
       } catch (error) {
-        console.error("Error inserting class:", error);
+
         res.status(500).json({ message: 'Failed to add class', error });
       }
     });
 
     // created api for all classes
-    app.get('/classes/all', async (req, res) => {
+    app.get('/classes_all', async (req, res) => {
       try {
         const allClasses = await classesCollection
           .find()
           .sort({ createdAt: -1 })
           .toArray();
-
         res.status(200).json(allClasses);
       } catch (error) {
-        console.error("Error fetching classes:", error);
+
         res.status(500).json({ message: 'Failed to get classes', error });
       }
     });
@@ -456,7 +544,6 @@ async function run() {
 
         res.status(200).json(teacherClasses);
       } catch (error) {
-        console.error("Error fetching teacher classes:", error);
         res.status(500).json({ message: 'Failed to get classes', error });
       }
     });
