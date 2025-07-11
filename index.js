@@ -27,11 +27,11 @@ async function run() {
     const usersCollection = database.collection("users");
     const teachersCollection = database.collection("teachers");
     const classesCollection = database.collection("classes");
+    const paymentsCollection = database.collection("payments");
 
     // POST /create-payment-intent
     app.post('/create-payment-intent', async (req, res) => {
       const { amountCent } = req.body;
-      console.log(amountCent)
 
       try {
         const paymentIntent = await stripe.paymentIntents.create({
@@ -45,6 +45,51 @@ async function run() {
         });
       } catch (err) {
         res.status(500).send({ error: err.message });
+      }
+    });
+
+    // create api for update user role and update enrolment and inserted payment info
+    app.post('/enroll', async (req, res) => {
+      const paymenInfoData = req.body;
+      const { email, classId } = paymenInfoData;
+
+      if (!email || !classId || !paymenInfoData) {
+        return res.status(400).json({ message: 'Email, classId, and paymentInfo are required' });
+      }
+
+      try {
+        // 1. Update user role to 'student'
+        const userUpdateResult = await usersCollection.updateOne(
+          { email: email },
+          { $set: { role: 'student' } }
+        );
+
+        // 2. Increment enrollments field in classesCollection
+        const classUpdateResult = await classesCollection.updateOne(
+          { _id: new ObjectId(classId) },
+          { $inc: { enrollments: 1 } }
+        );
+
+        // 3. Insert payment info into paymentsCollection
+        // const paymentDoc = {
+        //   email,
+        //   classId: new ObjectId(classId),
+        //   ...paymentInfo,
+        //   paymentDate: new Date()
+        // };
+
+        const paymentInsertResult = await paymentsCollection.insertOne(paymenInfoData);
+
+        res.status(200).json({
+          message: 'Enrollment completed successfully',
+          userUpdated: userUpdateResult.modifiedCount > 0,
+          classUpdated: classUpdateResult.modifiedCount > 0,
+          paymentInsertedId: paymentInsertResult.insertedId
+        });
+
+      } catch (error) {
+        console.error('Enrollment error:', error);
+        res.status(500).json({ message: 'Enrollment failed', error });
       }
     });
 
@@ -190,7 +235,6 @@ async function run() {
     // create api for get single class
     app.get('/classes/:id', async (req, res) => {
       const id = req.params.id;
-      console.log(id)
       try {
         const classData = await classesCollection.findOne({ _id: new ObjectId(id) });
 
