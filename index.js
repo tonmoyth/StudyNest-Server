@@ -29,6 +29,7 @@ async function run() {
     const classesCollection = database.collection("classes");
     const paymentsCollection = database.collection("payments");
     const assignmentsCollection = database.collection("assignments");
+    const assignmentSubmissionCollection = database.collection("assignmentsSubmission");
 
     // POST /create-payment-intent
     app.post('/create-payment-intent', async (req, res) => {
@@ -373,7 +374,7 @@ async function run() {
       const email = req.query.email;
 
       try {
-        const count = await assignmentsCollection.countDocuments({teacherEmail: email });
+        const count = await assignmentsCollection.countDocuments({ teacherEmail: email });
 
         res.status(200).json({
           email,
@@ -384,6 +385,60 @@ async function run() {
         res.status(500).json({ message: 'Failed to count assignments', error });
       }
     });
+
+    // create api for get assgnment
+    app.get('/assignments/:id', async (req, res) => {
+      const classId = req.params.id;
+      const email = req.query.email;
+
+      try {
+        // Find all assignments for the class
+        const allAssignments = await assignmentsCollection.find({ classId }).toArray();
+
+        // 2️⃣ Find submitted assignmentIds for this student
+        const submitted = await assignmentSubmissionCollection.find({
+          studentEmail: email
+        }).toArray();
+
+        const submittedIds = submitted.map(sub => sub.assignmentId?.toString());
+
+        //  Filter out submitted assignments
+        const unsubmittedAssignments = allAssignments.filter(assignment =>
+          !submittedIds.includes(assignment._id.toString())
+        );
+
+        res.status(200).json(unsubmittedAssignments);
+      } catch (error) {
+        console.error("Error fetching assignments:", error);
+        res.status(500).json({ message: 'Failed to fetch assignments', error });
+      }
+    });
+
+    // created api for assignment submited
+    app.post('/assignment-submit', async (req, res) => {
+      const submissionInfo = req.body;
+      const { assignmentId } = submissionInfo;
+
+      try {
+        // Increment `submission` field in assignmentsCollection
+        await assignmentsCollection.updateOne(
+          { _id: new ObjectId(assignmentId) },
+          { $inc: { submission: 1 } }
+        );
+
+        const result = await assignmentSubmissionCollection.insertOne(submissionInfo);
+
+        res.status(201).json({
+          message: "Assignment submitted successfully",
+          submissionId: result.insertedId
+        });
+      } catch (error) {
+        console.error("Error submitting assignment:", error);
+        res.status(500).json({ message: 'Assignment submission failed', error });
+      }
+    });
+
+
 
     // create api for get all teacher
     app.get('/teachers', async (req, res) => {
