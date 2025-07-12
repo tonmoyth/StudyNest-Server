@@ -30,6 +30,7 @@ async function run() {
     const paymentsCollection = database.collection("payments");
     const assignmentsCollection = database.collection("assignments");
     const assignmentSubmissionCollection = database.collection("assignmentsSubmission");
+    const feedbackCollection = database.collection("feedbacks");
 
     // POST /create-payment-intent
     app.post('/create-payment-intent', async (req, res) => {
@@ -347,22 +348,15 @@ async function run() {
     });
 
     // get enrollments
-    app.get('/classes_enrollments', async (req, res) => {
-      const email = req.query.email;
+    app.get('/classes_enrollments/:id', async (req, res) => {
+      const {id} = req.params;
+      const query = {_id: new ObjectId(id)}
 
       try {
         // Step 1: Get all classes by teacher email
-        const classes = await classesCollection.find({ email }).toArray();
+        const classe = await classesCollection.findOne(query);
 
-        // Step 2: Calculate total enrollments
-        const totalEnrollments = classes.reduce((total, cls) => {
-          return total + (cls.enrollments || 0);
-        }, 0);
-
-        res.status(200).json({
-          totalEnrollments,
-          classCount: classes.length,
-        });
+       res.send(classe)
       } catch (error) {
         console.error('Error fetching enrollments:', error);
         res.status(500).json({ message: 'Failed to fetch enrollments', error });
@@ -370,16 +364,14 @@ async function run() {
     });
 
     // get assignment count
-    app.get('/assignments/count', async (req, res) => {
-      const email = req.query.email;
+    app.get('/assignments/count/:id', async (req, res) => {
+      const {id} = req.params;
+      // const query = {_id: new ObjectId(id)};
 
       try {
-        const count = await assignmentsCollection.countDocuments({ teacherEmail: email });
+        const assignments = await assignmentsCollection.find({classId: id}).toArray();
 
-        res.status(200).json({
-          email,
-          assignmentCount: count
-        });
+        res.send(assignments)
       } catch (error) {
         console.error("Error counting assignments:", error);
         res.status(500).json({ message: 'Failed to count assignments', error });
@@ -438,6 +430,21 @@ async function run() {
       }
     });
 
+    // created api for feedback
+    app.post('/feedback', async (req, res) => {
+      const feedbackData = req.body;
+
+      try {
+        const result = await feedbackCollection.insertOne(feedbackData);
+        res.status(201).json({
+          message: 'Feedback submitted successfully',
+          insertedId: result.insertedId
+        });
+      } catch (error) {
+        console.error("Error inserting feedback:", error);
+        res.status(500).json({ message: 'Failed to submit feedback', error });
+      }
+    });
 
 
     // create api for get all teacher
