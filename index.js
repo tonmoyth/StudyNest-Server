@@ -4,12 +4,21 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
 const Stripe = require('stripe');
+const admin = require("firebase-admin");
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const decoded = Buffer.from(process.env.FB_ADMIN_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 
 // Middleware
 const app = express();
-app.use(express.json()); // To parse JSON body
+app.use(express.json());
 app.use(cors());
+
+
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(process.env.MONGODB_SECRET_KEY, {
@@ -31,6 +40,33 @@ async function run() {
     const assignmentsCollection = database.collection("assignments");
     const assignmentSubmissionCollection = database.collection("assignmentsSubmission");
     const feedbackCollection = database.collection("feedbacks");
+
+    // verify firebase
+    const verifyFirebaseToken = async (req, res, next) => {
+      const authHeader = req.headers.authorization;
+
+      if (!authHeader?.startsWith("Bearer ")) {
+        return res.status(401).send("Unauthorized");
+      }
+      const token = authHeader.split(" ")[1];
+     
+      try {
+        const decodedUser = await admin.auth().verifyIdToken(token);
+        req.user = decodedUser; 
+        next();
+      } catch (error) {
+        return res.status(403).send("Forbidden: Invalid Token");
+      }
+    }
+
+    // email varify
+    const emailVerify = (req,res,next) => {
+      const email = req.query.email;
+      if(!email || email !== req.user.email){
+         return res.status(403).send("Forbidden: Email mismatch or missing");
+      }
+      next();
+    }
 
     // POST /create-payment-intent
     app.post('/create-payment-intent', async (req, res) => {
@@ -97,7 +133,7 @@ async function run() {
     });
 
     // create api for get all enroll class
-    app.get('/enrolled-classes', async (req, res) => {
+    app.get('/enrolled-classes', verifyFirebaseToken,emailVerify, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
@@ -129,6 +165,7 @@ async function run() {
     // create api for user info insert 
     app.post("/users", async (req, res) => {
       const user = req.body;
+      console.log(user)
 
 
       // if (!user.username || !user.email) {
@@ -165,7 +202,7 @@ async function run() {
     });
 
     // create api for get all user
-    app.get('/users', async (req, res) => {
+    app.get('/users',verifyFirebaseToken, async (req, res) => {
       try {
         const users = await usersCollection.find().toArray();
         res.status(200).json(users);
@@ -214,7 +251,7 @@ async function run() {
     });
 
     // users search
-    app.get('/users/search', async (req, res) => {
+    app.get('/users/search',verifyFirebaseToken, async (req, res) => {
       const query = req.query.query;
 
       const searchRegex = new RegExp(query, 'i');
@@ -233,7 +270,7 @@ async function run() {
     })
 
     // user get for profile route show
-    app.get('/users/profile', async (req, res) => {
+    app.get('/users/profile', verifyFirebaseToken,emailVerify, async (req, res) => {
       const email = req.query.email;
 
       try {
@@ -266,7 +303,7 @@ async function run() {
     });
 
     // create api for get single class
-    app.get('/classes/:id', async (req, res) => {
+    app.get('/classes/:id',verifyFirebaseToken, async (req, res) => {
       const id = req.params.id;
 
       if (!ObjectId.isValid(id)) {
@@ -326,7 +363,7 @@ async function run() {
     });
 
     // create api for get teacher data
-    app.get('/teacher', async (req, res) => {
+    app.get('/teacher',verifyFirebaseToken,emailVerify, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
@@ -348,15 +385,15 @@ async function run() {
     });
 
     // get enrollments
-    app.get('/classes_enrollments/:id', async (req, res) => {
-      const {id} = req.params;
-      const query = {_id: new ObjectId(id)}
+    app.get('/classes_enrollments/:id',verifyFirebaseToken, async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) }
 
       try {
         // Step 1: Get all classes by teacher email
         const classe = await classesCollection.findOne(query);
 
-       res.send(classe)
+        res.send(classe)
       } catch (error) {
         console.error('Error fetching enrollments:', error);
         res.status(500).json({ message: 'Failed to fetch enrollments', error });
@@ -364,12 +401,12 @@ async function run() {
     });
 
     // get assignment count
-    app.get('/assignments/count/:id', async (req, res) => {
-      const {id} = req.params;
+    app.get('/assignments/count/:id',verifyFirebaseToken, async (req, res) => {
+      const { id } = req.params;
       // const query = {_id: new ObjectId(id)};
 
       try {
-        const assignments = await assignmentsCollection.find({classId: id}).toArray();
+        const assignments = await assignmentsCollection.find({ classId: id }).toArray();
 
         res.send(assignments)
       } catch (error) {
@@ -379,7 +416,7 @@ async function run() {
     });
 
     // create api for get assgnment
-    app.get('/assignments/:id', async (req, res) => {
+    app.get('/assignments/:id',verifyFirebaseToken,emailVerify, async (req, res) => {
       const classId = req.params.id;
       const email = req.query.email;
 
@@ -403,6 +440,23 @@ async function run() {
       } catch (error) {
         console.error("Error fetching assignments:", error);
         res.status(500).json({ message: 'Failed to fetch assignments', error });
+      }
+    });
+
+    // crate api for get submission
+    app.get('/assignment-submission-count/:classId',verifyFirebaseToken, async (req, res) => {
+      const classId = req.params.classId;
+
+      try {
+        const count = await assignmentSubmissionCollection.countDocuments({ classId });
+
+        res.status(200).json({
+          classId,
+          submissionCount: count
+        });
+      } catch (error) {
+        console.error("Error counting assignment submissions:", error);
+        res.status(500).json({ message: 'Failed to count submissions', error });
       }
     });
 
@@ -448,7 +502,7 @@ async function run() {
 
 
     // create api for get all teacher
-    app.get('/teachers', async (req, res) => {
+    app.get('/teachers', verifyFirebaseToken, async (req, res) => {
       try {
         const teachers = await teachersCollection.find().toArray();
         res.status(200).json(teachers);
@@ -560,7 +614,7 @@ async function run() {
     });
 
     // created api for all classes
-    app.get('/classes_all', async (req, res) => {
+    app.get('/classes_all',verifyFirebaseToken, async (req, res) => {
       try {
         const allClasses = await classesCollection
           .find()
@@ -594,9 +648,9 @@ async function run() {
     });
 
     // create api for get teacher classes
-    app.get('/classes', async (req, res) => {
+    app.get('/classes', verifyFirebaseToken,emailVerify, async (req, res) => {
       const email = req.query.email;
-
+      console.log(req.user)
       if (!email) {
         return res.status(400).json({ message: 'Teacher email is required as query parameter' });
       }
