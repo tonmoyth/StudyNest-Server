@@ -715,6 +715,57 @@ async function run() {
       }
     });
 
+    // create api for get total user
+    app.get('/total-users', async (req, res) => {
+      try {
+        const totalUsers = await usersCollection.countDocuments();
+
+        res.status(200).json({ totalUsers });
+      } catch (error) {
+        console.error("Error fetching total user count:", error);
+        res.status(500).json({ message: 'Failed to fetch user count', error });
+      }
+    });
+
+    // created api for get total classes
+    app.get('/total-classes', async (req, res) => {
+      try {
+        const totalClasses = await classesCollection.countDocuments();
+
+        res.status(200).json({ totalClasses });
+      } catch (error) {
+        console.error("Error fetching total class count:", error);
+        res.status(500).json({ message: 'Failed to fetch class count', error });
+      }
+    });
+
+    // create api for get all enrollments
+    app.get('/total-enrollments', async (req, res) => {
+      try {
+        const result = await classesCollection.aggregate([
+          {
+            $group: {
+              _id: null,
+              totalEnrollments: { $sum: "$enrollments" }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              totalEnrollments: 1
+            }
+          }
+        ]).toArray();
+
+        const total = result[0]?.totalEnrollments || 0;
+
+        res.status(200).json({ totalEnrollments: total });
+      } catch (error) {
+        console.error("Error fetching total enrollments:", error);
+        res.status(500).json({ message: 'Failed to fetch enrollments', error });
+      }
+    });
+
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
