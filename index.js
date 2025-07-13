@@ -49,10 +49,10 @@ async function run() {
         return res.status(401).send("Unauthorized");
       }
       const token = authHeader.split(" ")[1];
-     
+
       try {
         const decodedUser = await admin.auth().verifyIdToken(token);
-        req.user = decodedUser; 
+        req.user = decodedUser;
         next();
       } catch (error) {
         return res.status(403).send("Forbidden: Invalid Token");
@@ -60,10 +60,10 @@ async function run() {
     }
 
     // email varify
-    const emailVerify = (req,res,next) => {
+    const emailVerify = (req, res, next) => {
       const email = req.query.email;
-      if(!email || email !== req.user.email){
-         return res.status(403).send("Forbidden: Email mismatch or missing");
+      if (!email || email !== req.user.email) {
+        return res.status(403).send("Forbidden: Email mismatch or missing");
       }
       next();
     }
@@ -133,7 +133,7 @@ async function run() {
     });
 
     // create api for get all enroll class
-    app.get('/enrolled-classes', verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/enrolled-classes', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
@@ -202,7 +202,7 @@ async function run() {
     });
 
     // create api for get all user
-    app.get('/users',verifyFirebaseToken, async (req, res) => {
+    app.get('/users', verifyFirebaseToken, async (req, res) => {
       try {
         const users = await usersCollection.find().toArray();
         res.status(200).json(users);
@@ -251,7 +251,7 @@ async function run() {
     });
 
     // users search
-    app.get('/users/search',verifyFirebaseToken, async (req, res) => {
+    app.get('/users/search', verifyFirebaseToken, async (req, res) => {
       const query = req.query.query;
 
       const searchRegex = new RegExp(query, 'i');
@@ -270,7 +270,7 @@ async function run() {
     })
 
     // user get for profile route show
-    app.get('/users/profile', verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/users/profile', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
 
       try {
@@ -303,7 +303,7 @@ async function run() {
     });
 
     // create api for get single class
-    app.get('/classes/:id',verifyFirebaseToken, async (req, res) => {
+    app.get('/classes/:id', verifyFirebaseToken, async (req, res) => {
       const id = req.params.id;
 
       if (!ObjectId.isValid(id)) {
@@ -363,7 +363,7 @@ async function run() {
     });
 
     // create api for get teacher data
-    app.get('/teacher',verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/teacher', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
@@ -385,7 +385,7 @@ async function run() {
     });
 
     // get enrollments
-    app.get('/classes_enrollments/:id',verifyFirebaseToken, async (req, res) => {
+    app.get('/classes_enrollments/:id', verifyFirebaseToken, async (req, res) => {
       const { id } = req.params;
       const query = { _id: new ObjectId(id) }
 
@@ -401,7 +401,7 @@ async function run() {
     });
 
     // get assignment count
-    app.get('/assignments/count/:id',verifyFirebaseToken, async (req, res) => {
+    app.get('/assignments/count/:id', verifyFirebaseToken, async (req, res) => {
       const { id } = req.params;
       // const query = {_id: new ObjectId(id)};
 
@@ -416,7 +416,7 @@ async function run() {
     });
 
     // create api for get assgnment
-    app.get('/assignments/:id',verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/assignments/:id', verifyFirebaseToken, emailVerify, async (req, res) => {
       const classId = req.params.id;
       const email = req.query.email;
 
@@ -444,7 +444,7 @@ async function run() {
     });
 
     // crate api for get submission
-    app.get('/assignment-submission-count/:classId',verifyFirebaseToken, async (req, res) => {
+    app.get('/assignment-submission-count/:classId', verifyFirebaseToken, async (req, res) => {
       const classId = req.params.classId;
 
       try {
@@ -614,7 +614,7 @@ async function run() {
     });
 
     // created api for all classes
-    app.get('/classes_all',verifyFirebaseToken, async (req, res) => {
+    app.get('/classes_all', verifyFirebaseToken, async (req, res) => {
       try {
         const allClasses = await classesCollection
           .find()
@@ -648,7 +648,7 @@ async function run() {
     });
 
     // create api for get teacher classes
-    app.get('/classes', verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/classes', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
       console.log(req.user)
       if (!email) {
@@ -685,6 +685,34 @@ async function run() {
       const id = req.params.id;
       const result = await classesCollection.deleteOne({ _id: new ObjectId(id) });
       res.send(result);
+    });
+
+    // create api for get highly enrollment classes
+    app.get('/top-enrolled-classes', async (req, res) => {
+      try {
+        const topClasses = await classesCollection
+          .find({})                      // Find all
+          .sort({ enrollments: -1 })     // Sort by enrollments (descending)
+          .limit(6)                      // Limit to top 6
+          .toArray();
+
+        res.status(200).json(topClasses);
+      } catch (error) {
+        console.error("Error fetching top enrolled classes:", error);
+        res.status(500).json({ message: 'Failed to fetch top classes', error });
+      }
+    });
+
+    // create api for get all feedback
+    app.get('/feedbacks', async (req, res) => {
+      try {
+        const feedbacks = await feedbackCollection.find({}).toArray();
+
+        res.status(200).json(feedbacks);
+      } catch (error) {
+        console.error("Error fetching feedbacks:", error);
+        res.status(500).json({ message: 'Failed to fetch feedbacks', error });
+      }
     });
 
   } finally {
