@@ -165,18 +165,21 @@ async function run() {
     // create api for user info insert 
     app.post("/users", async (req, res) => {
       const user = req.body;
-      console.log(user)
-
-
-      // if (!user.username || !user.email) {
-      //   return res.status(400).json({ message: "Name and email required" });
-      // }
+      const query = { email: user.email };
 
       try {
+        const existingUser = await usersCollection.findOne(query);
+
+        if (existingUser) {
+          return  // 409 = Conflict
+        }
+
         const result = await usersCollection.insertOne(user);
-        res.status(201).json({ insertedId: result.insertedId });
+        return res.status(201).json({ insertedId: result.insertedId });
+
       } catch (error) {
-        res.status(500).json({ message: "Failed to insert user", error });
+        console.error("Error inserting user:", error);
+        return res.status(500).json({ message: "Failed to insert user", error });
       }
     });
 
@@ -763,6 +766,65 @@ async function run() {
       } catch (error) {
         console.error("Error fetching total enrollments:", error);
         res.status(500).json({ message: 'Failed to fetch enrollments', error });
+      }
+    });
+
+    // created api for get top teacher
+    app.get('/top-teachers', async (req, res) => {
+      try {
+        // Step 1: Get top feedbacks sorted by rating
+        const feedbacks = await feedbackCollection
+          .find({})
+          .sort({ rating: -1 }) // assuming "marks" is used as rating
+          .limit(20) // limit to top 20 feedbacks
+          .toArray();
+
+
+        const classIds = feedbacks.map(f => new ObjectId(f.classId)).filter(Boolean);
+
+
+        // Step 2: Get classes by classIds
+        const classes = await classesCollection
+          .find({ _id: { $in: classIds } })
+          .toArray();
+
+
+
+        // Step 3: Get teacher emails from classes
+        const teacherEmails = [...new Set(classes.map(c => c.email))]; // remove duplicates
+        // Step 4: Get teacher details from teachersCollection
+        const topTeachers = await teachersCollection
+          .find({ email: { $in: teacherEmails } })
+          .limit(5)
+          .toArray();
+
+        res.status(200).json(topTeachers);
+      } catch (error) {
+        console.error("Error fetching top teachers:", error);
+        res.status(500).json({ message: 'Failed to fetch top teachers', error });
+      }
+    });
+
+    // create api for get total student
+    app.get('/total-students', verifyFirebaseToken, async (req, res) => {
+      try {
+        const count = await usersCollection.countDocuments({ role: 'student' });
+
+        res.status(200).json({ totalStudents: count });
+      } catch (error) {
+        console.error("Error fetching student count:", error);
+        res.status(500).json({ message: 'Failed to fetch student count', error });
+      }
+    });
+
+    app.get('/total-teachers', async (req, res) => {
+      try {
+        const count = await usersCollection.countDocuments({ role: 'teacher' });
+
+        res.status(200).json({ totalTeachers: count });
+      } catch (error) {
+        console.error("Error fetching teacher count:", error);
+        res.status(500).json({ message: 'Failed to fetch teacher count', error });
       }
     });
 
