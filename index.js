@@ -135,27 +135,46 @@ async function run() {
     // create api for get all enroll class
     app.get('/enrolled-classes', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
+      const page = parseInt(req.query.page) || 1;
+      const limit = 10;
+      const skip = (page - 1) * limit;
 
       if (!email) {
         return res.status(400).json({ message: 'Email is required as query parameter' });
       }
 
       try {
-        // 1. Get classIds from paymentsCollection where email matches
+        // 1️⃣ Find classIds from paymentsCollection for this email
         const payments = await paymentsCollection.find({ email }).toArray();
-
         const classIds = payments.map(p => new ObjectId(p.classId));
 
         if (classIds.length === 0) {
-          return res.status(200).json([]); // no enrollments yet
+          return res.status(200).json({
+            page,
+            limit,
+            totalPages: 0,
+            totalCount: 0,
+            data: []
+          });
         }
 
-        // 2. Get classes from classesCollection using those classIds
+        // 2️⃣ Total count for pagination
+        const totalCount = await classesCollection.countDocuments({ _id: { $in: classIds } });
+
+        // 3️⃣ Paginated enrolled classes
         const enrolledClasses = await classesCollection
           .find({ _id: { $in: classIds } })
+          .skip(skip)
+          .limit(limit)
           .toArray();
 
-        res.status(200).json(enrolledClasses);
+        res.status(200).json({
+          page,
+          limit,
+          totalPages: Math.ceil(totalCount / limit),
+          totalCount,
+          data: enrolledClasses
+        });
       } catch (error) {
         console.error("Error fetching enrolled classes:", error);
         res.status(500).json({ message: 'Failed to fetch enrolled classes', error });
@@ -163,23 +182,30 @@ async function run() {
     });
 
     // create api for user info insert 
-    app.post("/users", async (req, res) => {
-      const user = req.body;
-      const query = { email: user.email };
+    app.get("/users", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = 10;
+      const skip = (page - 1) * limit;
 
       try {
-        const existingUser = await usersCollection.findOne(query);
+        const users = await usersCollection
+          .find()
+          .skip(skip)
+          .limit(limit)
+          .toArray();
 
-        if (existingUser) {
-          return  // 409 = Conflict
-        }
+        const totalCount = await usersCollection.countDocuments();
 
-        const result = await usersCollection.insertOne(user);
-        return res.status(201).json({ insertedId: result.insertedId });
-
+        res.status(200).json({
+          page,
+          limit,
+          totalPages: Math.ceil(totalCount / limit),
+          totalCount,
+          data: users
+        });
       } catch (error) {
-        console.error("Error inserting user:", error);
-        return res.status(500).json({ message: "Failed to insert user", error });
+        console.error("Error fetching users:", error);
+        res.status(500).json({ message: "Failed to fetch users", error });
       }
     });
 
@@ -293,12 +319,28 @@ async function run() {
     // create api for get classes aprove
     app.get('/classes/approved', async (req, res) => {
       try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        // Get approved classes with pagination
         const approvedClasses = await classesCollection
           .find({ status: "approved" })
           .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
           .toArray();
 
-        res.status(200).json(approvedClasses);
+        // Get total approved class count
+        const totalCount = await classesCollection.countDocuments({ status: "approved" });
+
+        res.status(200).json({
+          page,
+          limit,
+          totalPages: Math.ceil(totalCount / limit),
+          totalCount,
+          data: approvedClasses,
+        });
       } catch (error) {
         console.error("Error fetching approved classes:", error);
         res.status(500).json({ message: 'Failed to get approved classes', error });
@@ -507,8 +549,24 @@ async function run() {
     // create api for get all teacher
     app.get('/teachers', verifyFirebaseToken, async (req, res) => {
       try {
-        const teachers = await teachersCollection.find().toArray();
-        res.status(200).json(teachers);
+        const page = parseInt(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        const teachers = await teachersCollection
+          .find()
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        const totalCount = await teachersCollection.countDocuments();
+
+        res.status(200).json({
+          page,
+          totalPages: Math.ceil(totalCount / limit),
+          totalCount,
+          data: teachers,
+        });
       } catch (error) {
         res.status(500).json({ message: 'Failed to get teachers', error });
       }
@@ -619,13 +677,25 @@ async function run() {
     // created api for all classes
     app.get('/classes_all', verifyFirebaseToken, async (req, res) => {
       try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = 5;
+        const skip = (page - 1) * limit;
+
         const allClasses = await classesCollection
           .find()
           .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
           .toArray();
-        res.status(200).json(allClasses);
-      } catch (error) {
 
+        const totalCount = await classesCollection.countDocuments();
+
+        res.status(200).json({
+          totalPages: Math.ceil(totalCount / limit),
+          data: allClasses,
+        });
+      } catch (error) {
+        console.error("Error in /classes_all:", error);
         res.status(500).json({ message: 'Failed to get classes', error });
       }
     });
@@ -652,16 +722,32 @@ async function run() {
 
     // create api for get teacher classes
     app.get('/classes', verifyFirebaseToken, emailVerify, async (req, res) => {
+
       const email = req.query.email;
-      console.log(req.user)
+      const page = parseInt(req.query.page) || 1;
+      const limit = 10;
+
       if (!email) {
         return res.status(400).json({ message: 'Teacher email is required as query parameter' });
       }
 
       try {
-        const teacherClasses = await classesCollection.find({ email }).toArray();
+        const skip = (page - 1) * limit;
 
-        res.status(200).json(teacherClasses);
+        const total = await classesCollection.countDocuments({ email });
+        const teacherClasses = await classesCollection
+          .find({ email })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        res.status(200).json({
+          classes: teacherClasses,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total
+        });
       } catch (error) {
         res.status(500).json({ message: 'Failed to get classes', error });
       }
