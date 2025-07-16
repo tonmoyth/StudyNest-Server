@@ -298,6 +298,26 @@ async function run() {
       res.status(200).send(users);
     })
 
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email };
+
+      try {
+        const existingUser = await usersCollection.findOne(query);
+
+        if (existingUser) {
+          return
+        }
+
+        const result = await usersCollection.insertOne(user);
+        return res.status(201).json({ insertedId: result.insertedId });
+
+      } catch (error) {
+        console.error("Error inserting user:", error);
+        return res.status(500).json({ message: "Failed to insert user", error });
+      }
+    });
+
     // user get for profile route show
     app.get('/users/profile', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
@@ -368,6 +388,38 @@ async function run() {
       }
     });
 
+    app.get('/assignments_total',verifyFirebaseToken,emailVerify, async (req, res) => {
+      const email = req.query.email;
+      
+
+      if (!email) {
+        return res.status(400).json({ message: 'Teacher email is required as query parameter' });
+      }
+
+      try {
+        // Step 1: Find all classes for the teacher
+        const classes = await classesCollection.find({ email }).toArray();
+        console.log(classes)
+        // Step 2: Get all classIds from those classes
+        const classIds = classes.map(cls => cls._id);
+
+        if (classIds.length === 0) {
+          return res.status(200).json({ totalAssignments: 0 });
+        }
+
+        // Step 3: Count assignments where classId is in classIds
+        const totalAssignments = await assignmentsCollection.countDocuments({
+          classId: { $in: classIds.map(id => id.toString()) }
+        });
+        console.log(totalAssignments)
+
+        res.status(200).json({ totalAssignments });
+      } catch (error) {
+        console.error("Error calculating total assignments:", error);
+        res.status(500).json({ message: 'Failed to calculate total assignments', error });
+      }
+    });
+
     // create post api for insert teacher
     app.post('/teacher', async (req, res) => {
       const teacher = req.body;
@@ -426,6 +478,37 @@ async function run() {
       } catch (error) {
         console.error("Error fetching teacher:", error);
         res.status(500).json({ message: 'Failed to get teacher', error });
+      }
+    });
+
+    // get total enrollments
+    app.get('/teachers_enrollments_total', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).json({ message: "Teacher email is required as query parameter" });
+      }
+
+      try {
+        // Aggregate to sum enrollments of all classes by this teacher
+        const result = await classesCollection.aggregate([
+          {
+            $match: { email }
+          },
+          {
+            $group: {
+              _id: null,
+              totalEnrollments: { $sum: "$enrollments" }
+            }
+          }
+        ]).toArray();
+
+        const total = result[0]?.totalEnrollments || 0;
+
+        res.status(200).json({ totalEnrollments: total });
+      } catch (error) {
+        console.error("Error calculating total enrollments:", error);
+        res.status(500).json({ message: "Failed to calculate total enrollments", error });
       }
     });
 
@@ -678,7 +761,7 @@ async function run() {
     app.get('/classes_all', verifyFirebaseToken, async (req, res) => {
       try {
         const page = parseInt(req.query.page) || 1;
-        const limit = 5;
+        const limit = 10;
         const skip = (page - 1) * limit;
 
         const allClasses = await classesCollection
