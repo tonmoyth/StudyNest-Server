@@ -388,9 +388,37 @@ async function run() {
       }
     });
 
-    app.get('/assignments_total',verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/assignments_student_total',verifyFirebaseToken,emailVerify, async (req, res) => {
       const email = req.query.email;
-      
+
+      if (!email) {
+        return res.status(400).json({ message: 'Student email is required as query parameter' });
+      }
+
+      try {
+        // Step 1: Get classIds from paymentsCollection
+        const payments = await paymentsCollection.find({ email }).toArray();
+        const classIds = payments.map(p => p.classId).filter(Boolean);
+
+        if (classIds.length === 0) {
+          return res.status(200).json({ totalAssignments: 0 });
+        }
+
+        // Step 2: Count assignments where classId is in classIds
+        const totalAssignments = await assignmentsCollection.countDocuments({
+          classId: { $in: classIds }
+        });
+
+        res.status(200).json({ totalAssignments });
+      } catch (error) {
+        console.error("Error fetching total student assignments:", error);
+        res.status(500).json({ message: 'Failed to get total student assignments', error });
+      }
+    });
+
+    app.get('/assignments_total', verifyFirebaseToken, emailVerify, async (req, res) => {
+      const email = req.query.email;
+
 
       if (!email) {
         return res.status(400).json({ message: 'Teacher email is required as query parameter' });
@@ -399,7 +427,7 @@ async function run() {
       try {
         // Step 1: Find all classes for the teacher
         const classes = await classesCollection.find({ email }).toArray();
-        console.log(classes)
+
         // Step 2: Get all classIds from those classes
         const classIds = classes.map(cls => cls._id);
 
