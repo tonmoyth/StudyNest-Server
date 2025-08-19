@@ -182,7 +182,7 @@ async function run() {
     });
 
     // create api for user info insert 
-    app.get("/users",verifyFirebaseToken, async (req, res) => {
+    app.get("/users", verifyFirebaseToken, async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = 10;
       const skip = (page - 1) * limit;
@@ -342,18 +342,22 @@ async function run() {
         const page = parseInt(req.query.page) || 1;
         const limit = 10;
         const skip = (page - 1) * limit;
+        // sort query (default: desc)
+       
+        const sortOrder = req.query.sort === "Ascending" ? 1 : -1;
+    
 
         // Get approved classes with pagination
         const approvedClasses = await classesCollection
           .find({ status: "approved" })
-          .sort({ createdAt: -1 })
+          .sort({ createdAt: sortOrder })
           .skip(skip)
           .limit(limit)
           .toArray();
 
         // Get total approved class count
         const totalCount = await classesCollection.countDocuments({ status: "approved" });
-      
+
 
         res.status(200).json({
           page,
@@ -389,7 +393,7 @@ async function run() {
       }
     });
 
-    app.get('/assignments_student_total',verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/assignments_student_total', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
@@ -440,7 +444,7 @@ async function run() {
         const totalAssignments = await assignmentsCollection.countDocuments({
           classId: { $in: classIds.map(id => id.toString()) }
         });
-       
+
 
         res.status(200).json({ totalAssignments });
       } catch (error) {
@@ -511,7 +515,7 @@ async function run() {
     });
 
     // get total enrollments
-    app.get('/teachers_enrollments_total',verifyFirebaseToken,emailVerify, async (req, res) => {
+    app.get('/teachers_enrollments_total', verifyFirebaseToken, emailVerify, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
